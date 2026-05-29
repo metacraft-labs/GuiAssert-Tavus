@@ -46,6 +46,12 @@ import std/[asynchttpserver, asyncdispatch, httpcore, json,
 import gui_assert/talking_head
 import gui_assert_tavus
 
+# Capture the live API key at module load — pure tests below call
+# `delEnv(ApiKeyEnvVar)` to assert "missing key" behaviour. Nim's
+# `unittest` runs test bodies eagerly as the module loads, so we must
+# read the env *before* the pure suites execute.
+let PreservedTavusApiKey* {.used.} = getEnv(ApiKeyEnvVar)
+
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
@@ -676,12 +682,13 @@ when defined(tavusLive):
   suite "tavus live render against tavusapi.com":
 
     test "renders a real talking-head MP4 via the Tavus API":
-      doAssert getEnv(ApiKeyEnvVar).len > 0,
+      doAssert PreservedTavusApiKey.len > 0,
         "TAVUS_API_KEY is not set. Live Tavus tests require a real " &
         "API key from https://platform.tavus.io (Starter $59/mo " &
         "includes ~100 min conversational + 10 min pre-rendered; " &
         "Growth $300-600/mo; Enterprise custom). Export " &
         "TAVUS_API_KEY=<your key> and re-run with -d:tavusLive."
+      putEnv(ApiKeyEnvVar, PreservedTavusApiKey)
 
       let narration = ensureLiveNarration()
 
@@ -697,7 +704,8 @@ when defined(tavusLive):
         device: "auto",
         cacheDir: some(tmp / "cache"),
         providerSettings: %*{
-          "script_text": "Hello GuiAssert Tavus",
+          "api_key": PreservedTavusApiKey,
+          "script_text": "Hello GuiAssert Tavus. This is a real Tavus replica render.",
           "replica_id": DefaultTavusReplica,
           "video_name": "GuiAssert live test",
         },
