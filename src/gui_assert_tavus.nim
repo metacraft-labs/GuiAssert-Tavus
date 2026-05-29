@@ -89,6 +89,7 @@
 import std/[os, options, json, httpclient, sha1, strutils, times]
 
 import gui_assert/talking_head
+import gui_assert/emotive
 
 type
   TavusError* = object of TalkingHeadError
@@ -354,6 +355,131 @@ proc pollVideoStatus*(apiKey, apiBase, videoId: string,
         "Tavus video " & videoId & " did not reach status=ready within " &
         $maxSecs & "s (last status=" & status & ")")
     sleep(intervalMs)
+
+# ---------------------------------------------------------------------------
+# Capabilities + emotive translation + discovery + dry-run
+# ---------------------------------------------------------------------------
+
+const TavusCapabilities* = ProviderCapabilities(
+  supportsEmotion: false,
+  supportsHeadMotion: false,
+  supportsExpressionScale: false,
+  supportsGreenScreen: false,      ## replica-baked background
+  supportsTransparentBg: false,
+  supportsAudioInput: false,
+  supportsTextInput: true,
+  supportsVoiceTuning: false,
+  supportsGestures: false,
+  supportsEyeContact: false,
+  supportedEmotions: @[],
+)
+
+proc emotiveToProviderSettings*(c: CommonEmotiveConfig;
+                                base: JsonNode = nil): JsonNode =
+  ## Tavus exposes effectively no per-render emotive knobs — the
+  ## replica is the source of truth for voice, expression, posture,
+  ## and background.  The projection therefore only forwards
+  ## extras the caller might want recorded into the cache key,
+  ## leaving the rest of the common config untouched.
+  result = if base.isNil or base.kind != JObject: newJObject() else: base
+  if c.background.isSome:
+    setIfMissing(result, "background", %($c.background.get))
+  if c.backgroundColor.isSome:
+    setIfMissing(result, "background_color", %c.backgroundColor.get)
+
+proc parseGenderField(node: JsonNode): Gender =
+  if node.isNil or node.kind != JString: return gUnspecified
+  parseGender(node.getStr)
+
+proc listReplicas*(apiKey: string;
+                   apiBase: string = DefaultTavusApiBase):
+    seq[AvatarInfo] =
+  ## `GET /v2/replicas` — catalogue of replicas the supplied key
+  ## owns.  Normalised onto `AvatarInfo` so consumers can use
+  ## `matchPreferredAvatar` against replicas the same way they do
+  ## against HeyGen/Synthesia avatars.
+  result = @[]
+  if apiKey.len == 0:
+    raise newException(TavusError,
+      "listReplicas: TAVUS_API_KEY is required")
+  let client = newTavusHttpClient(apiKey)
+  try:
+    let resp = client.request(apiBase & "/v2/replicas",
+                              httpMethod = HttpGet)
+    if not resp.code.is2xx:
+      raiseHttp("GET /v2/replicas", resp)
+    let parsed = parseJson(resp.body)
+    var list: JsonNode = nil
+    if parsed.kind == JObject:
+      if parsed.hasKey("data"): list = parsed["data"]
+      elif parsed.hasKey("replicas"): list = parsed["replicas"]
+    elif parsed.kind == JArray:
+      list = parsed
+    if list.isNil or list.kind != JArray: return
+    for it in list.items:
+      if it.kind != JObject: continue
+      var a = AvatarInfo()
+      a.id = it{"replica_id"}.getStr("")
+      if a.id.len == 0:
+        a.id = it{"id"}.getStr("")
+      a.name = it{"replica_name"}.getStr("")
+      if a.name.len == 0:
+        a.name = it{"name"}.getStr("")
+      a.gender = parseGenderField(it{"gender"})
+      a.description = it{"description"}.getStr("")
+      a.previewUrl = it{"thumbnail_video_url"}.getStr("")
+      result.add a
+  finally:
+    closeQuietly(client)
+
+# Backwards-compatible alias — `listAvatars` matches the naming the
+# matching helpers use.
+proc listAvatars*(apiKey: string;
+                  apiBase: string = DefaultTavusApiBase):
+    seq[AvatarInfo] {.inline.} =
+  listReplicas(apiKey, apiBase)
+
+proc dryRunValidate*(opts: TalkingHeadOpts;
+                     prefs: AvatarPreferences = AvatarPreferences()):
+    DryRunReport =
+  ## Validate locally + against the account's live replica list:
+  ## API key presence, non-empty `script`, replica resolution
+  ## against `prefs`, and replica existence in the live catalogue.
+  result = newDryRunReport("tavus")
+  let apiKey = resolveApiKey(opts)
+  if apiKey.len == 0:
+    result.addIssue(drError, "api_key",
+      "TAVUS_API_KEY is not set (or providerSettings.api_key is empty)")
+    return
+  let apiBase = resolveApiBase(opts)
+  let script = resolveScriptText(opts)
+  if script.strip.len == 0:
+    result.addIssue(drError, "script_text",
+      "providerSettings.script_text is empty; Tavus returns HTTP 400 " &
+      "on empty script")
+  var replicaId = resolveReplicaId(opts)
+  var available: seq[AvatarInfo] = @[]
+  try:
+    available = listReplicas(apiKey, apiBase)
+  except CatchableError as e:
+    result.addIssue(drWarning, "replicas",
+      "could not list replicas: " & e.msg)
+  if prefs.preferred.len > 0 and available.len > 0:
+    let m = matchPreferredAvatar(prefs, "tavus", available)
+    if m.isSome:
+      replicaId = m.get.id
+    else:
+      result.addIssue(drWarning, "avatar_preferences",
+        "no preferred replica matched; using opts default '" &
+        replicaId & "'")
+  if available.len > 0:
+    var hit = false
+    for a in available:
+      if a.id == replicaId or a.name == replicaId:
+        hit = true; break
+    if not hit:
+      result.addIssue(drError, "replica_id",
+        "replica '" & replicaId & "' is not in the account's replica list")
 
 proc downloadVideo*(videoUrl, outputPath: string) =
   ## Download the rendered MP4. The Tavus `download_url` is served
