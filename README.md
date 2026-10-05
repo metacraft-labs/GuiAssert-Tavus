@@ -38,13 +38,13 @@ GuiAssert-Tavus/
 
 ## Cost of setup
 
-| Resource     | Approx.                                                |
-| ------------ | ------------------------------------------------------ |
-| Disk         | None beyond Nim build artefacts                        |
-| Network      | Per-render JSON + MP4 download, modest                 |
-| Time         | First call ~minutes (Tavus pre-rendered videos are slow) |
-| Dollars      | **Starter $59/mo** (~100 min conversational + ~10 min pre-rendered), **Growth $300-600/mo**, **Enterprise custom**. Within a plan, renders are quota-metered (minutes/month) rather than pay-as-you-go per call. |
-| API key      | Yes — `TAVUS_API_KEY` env var                          |
+| Resource | Approx.                                                                                                                                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Disk     | None beyond Nim build artefacts                                                                                                                                                                                  |
+| Network  | Per-render JSON + MP4 download, modest                                                                                                                                                                           |
+| Time     | First call ~minutes (Tavus pre-rendered videos are slow)                                                                                                                                                         |
+| Dollars  | **Starter $59/mo** (~100 min conversational + ~10 min pre-rendered), **Growth $300-600/mo**, **Enterprise custom**. Within a plan, renders are quota-metered (minutes/month) rather than pay-as-you-go per call. |
+| API key  | Yes — `TAVUS_API_KEY` env var                                                                                                                                                                                    |
 
 Pricing is set by Tavus; see [their pricing page](https://www.tavus.io/pricing)
 for current numbers and the per-tier monthly render quota. The
@@ -69,7 +69,7 @@ user setup.
 
 GuiAssert's `TalkingHeadProvider.generate` contract is
 `generate(narrationWav, outputMp4, opts)` — i.e. the audio is provided
-as a *pre-rendered WAV*. Tavus's `POST /v2/videos` endpoint does NOT
+as a _pre-rendered WAV_. Tavus's `POST /v2/videos` endpoint does NOT
 accept uploaded audio: it takes a `script` string and the selected
 replica synthesises the voiceover itself. This plugin therefore:
 
@@ -130,13 +130,13 @@ generateTalkingHead(reg, "tavus", narrationWav, outputMp4, opts)
 All knobs live under `TalkingHeadOpts.providerSettings` (a `JsonNode`),
 with environment-variable fallbacks where applicable:
 
-| Setting | YAML key | Env fallback | Default | Purpose |
-| --- | --- | --- | --- | --- |
-| `api_key` | `api_key` | `TAVUS_API_KEY` | _(none)_ | Tavus API key. |
-| `api_base` | `api_base` | _(none)_ | `https://tavusapi.com` | API endpoint. Override to point at a mock or staging server. |
-| `script_text` | `script_text` | _(none)_ | _(none)_ | **REQUIRED.** Script for Tavus to speak. |
-| `replica_id` | `replica_id` | _(none)_ | `r79e1c033f` | Tavus replica identifier (public stock or custom clone). |
-| `video_name` | `video_name` | _(none)_ | `GuiAssert Tavus render` | Display name for the rendered video. |
+| Setting       | YAML key      | Env fallback    | Default                  | Purpose                                                      |
+| ------------- | ------------- | --------------- | ------------------------ | ------------------------------------------------------------ |
+| `api_key`     | `api_key`     | `TAVUS_API_KEY` | _(none)_                 | Tavus API key.                                               |
+| `api_base`    | `api_base`    | _(none)_        | `https://tavusapi.com`   | API endpoint. Override to point at a mock or staging server. |
+| `script_text` | `script_text` | _(none)_        | _(none)_                 | **REQUIRED.** Script for Tavus to speak.                     |
+| `replica_id`  | `replica_id`  | _(none)_        | `r79e1c033f`             | Tavus replica identifier (public stock or custom clone).     |
+| `video_name`  | `video_name`  | _(none)_        | `GuiAssert Tavus render` | Display name for the rendered video.                         |
 
 The provider name is `"tavus"`.
 
@@ -157,7 +157,7 @@ poll round-trips):
    The body is a flat object with snake_case keys — unlike
    Synthesia, there is no nested `input[]` array envelope. The
    response is a flat JSON object `{"video_id": "...", "status":
-   "queued", ...}` — no envelope wrapping (unlike HeyGen).
+"queued", ...}` — no envelope wrapping (unlike HeyGen).
 2. `GET /v2/videos/{video_id}` — polled every 10 s (15-minute
    timeout) until `status == "ready"`. Other terminal statuses are
    `error` and `deleted`, both treated as failures.
@@ -230,3 +230,26 @@ extension could expose the conversational mode separately.
 MIT — see `LICENSE`. Tavus itself is a commercial service governed
 by its own [terms of service](https://www.tavus.io/legal/terms);
 the plugin only speaks the public REST API.
+
+## Native contributor hooks
+
+The plugin remains a pure Nim HTTP client. Its developer shell also supplies
+native Python, UV, Prek and the portable formatters from its existing pin.
+The committed hook config runs the seven standard checks and actual public lint.
+
+Select the verified matching managed-hook engine as `REPROBUILD_REPRO`.
+From this repository root, bootstrap its genuine managed layout first:
+
+```sh
+direnv exec . nix develop --no-update-lock-file --no-write-lock-file --command "$REPROBUILD_REPRO" hooks ensure --vcs .
+direnv exec . nix develop --no-update-lock-file --no-write-lock-file --command python3 tools/install-canonical-hooks.py --repro "$REPROBUILD_REPRO"
+direnv exec . nix develop --no-update-lock-file --no-write-lock-file --command prek run --all-files
+```
+
+The installer verifies the complete matching engine and dispatcher bytes,
+preserves known local hooks and pre-push bodies/modes, and refuses unknown or
+external hook ownership. Its installed native Prek body persistently selects
+canonical upstream hook implementations even when the caller selector is absent.
+System Python selection uses the owning native interpreter without managed
+Python downloads. Linux qualification does not establish native Windows tools.
+Original test and required live API prerequisites remain unchanged.
