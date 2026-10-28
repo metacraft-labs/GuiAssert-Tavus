@@ -1,5 +1,7 @@
 # GuiAssert-Tavus
 
+Implements the talking-head provider contract of [DemoVideoStudio](https://github.com/metacraft-labs/DemoVideoStudio), version 1 (`demo_video_studio/plugins/talking_head`), and runs its conformance kit in `just test` (`tests/tcontract.nim`). Build it next to DemoVideoStudio and GuiAssert checkouts (or set `DEMO_VIDEO_STUDIO_SRC` and `GUI_ASSERT_SRC`).
+
 Tavus talking-head plugin for [GuiAssert]. Implements GuiAssert's
 `TalkingHeadProvider` contract by speaking the commercial
 [Tavus v2 REST API](https://docs.tavus.io/api-reference/video/create-video)
@@ -38,13 +40,13 @@ GuiAssert-Tavus/
 
 ## Cost of setup
 
-| Resource     | Approx.                                                |
-| ------------ | ------------------------------------------------------ |
-| Disk         | None beyond Nim build artefacts                        |
-| Network      | Per-render JSON + MP4 download, modest                 |
-| Time         | First call ~minutes (Tavus pre-rendered videos are slow) |
-| Dollars      | **Starter $59/mo** (~100 min conversational + ~10 min pre-rendered), **Growth $300-600/mo**, **Enterprise custom**. Within a plan, renders are quota-metered (minutes/month) rather than pay-as-you-go per call. |
-| API key      | Yes — `TAVUS_API_KEY` env var                          |
+| Resource | Approx.                                                                                                                                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Disk     | None beyond Nim build artefacts                                                                                                                                                                                  |
+| Network  | Per-render JSON + MP4 download, modest                                                                                                                                                                           |
+| Time     | First call ~minutes (Tavus pre-rendered videos are slow)                                                                                                                                                         |
+| Dollars  | **Starter $59/mo** (~100 min conversational + ~10 min pre-rendered), **Growth $300-600/mo**, **Enterprise custom**. Within a plan, renders are quota-metered (minutes/month) rather than pay-as-you-go per call. |
+| API key  | Yes — `TAVUS_API_KEY` env var                                                                                                                                                                                    |
 
 Pricing is set by Tavus; see [their pricing page](https://www.tavus.io/pricing)
 for current numbers and the per-tier monthly render quota. The
@@ -69,7 +71,7 @@ user setup.
 
 GuiAssert's `TalkingHeadProvider.generate` contract is
 `generate(narrationWav, outputMp4, opts)` — i.e. the audio is provided
-as a *pre-rendered WAV*. Tavus's `POST /v2/videos` endpoint does NOT
+as a _pre-rendered WAV_. Tavus's `POST /v2/videos` endpoint does NOT
 accept uploaded audio: it takes a `script` string and the selected
 replica synthesises the voiceover itself. This plugin therefore:
 
@@ -105,7 +107,7 @@ against accidental "fixes" that would prepend a `Bearer ` or
 ## Wiring into a runner
 
 ```nim
-import gui_assert/talking_head
+import demo_video_studio/plugins/talking_head
 import gui_assert_tavus
 
 let reg = newRegistry()         # registry pre-populated with `stock_avatar`
@@ -130,13 +132,13 @@ generateTalkingHead(reg, "tavus", narrationWav, outputMp4, opts)
 All knobs live under `TalkingHeadOpts.providerSettings` (a `JsonNode`),
 with environment-variable fallbacks where applicable:
 
-| Setting | YAML key | Env fallback | Default | Purpose |
-| --- | --- | --- | --- | --- |
-| `api_key` | `api_key` | `TAVUS_API_KEY` | _(none)_ | Tavus API key. |
-| `api_base` | `api_base` | _(none)_ | `https://tavusapi.com` | API endpoint. Override to point at a mock or staging server. |
-| `script_text` | `script_text` | _(none)_ | _(none)_ | **REQUIRED.** Script for Tavus to speak. |
-| `replica_id` | `replica_id` | _(none)_ | `r79e1c033f` | Tavus replica identifier (public stock or custom clone). |
-| `video_name` | `video_name` | _(none)_ | `GuiAssert Tavus render` | Display name for the rendered video. |
+| Setting       | YAML key      | Env fallback    | Default                  | Purpose                                                      |
+| ------------- | ------------- | --------------- | ------------------------ | ------------------------------------------------------------ |
+| `api_key`     | `api_key`     | `TAVUS_API_KEY` | _(none)_                 | Tavus API key.                                               |
+| `api_base`    | `api_base`    | _(none)_        | `https://tavusapi.com`   | API endpoint. Override to point at a mock or staging server. |
+| `script_text` | `script_text` | _(none)_        | _(none)_                 | **REQUIRED.** Script for Tavus to speak.                     |
+| `replica_id`  | `replica_id`  | _(none)_        | `r79e1c033f`             | Tavus replica identifier (public stock or custom clone).     |
+| `video_name`  | `video_name`  | _(none)_        | `GuiAssert Tavus render` | Display name for the rendered video.                         |
 
 The provider name is `"tavus"`.
 
@@ -157,7 +159,7 @@ poll round-trips):
    The body is a flat object with snake_case keys — unlike
    Synthesia, there is no nested `input[]` array envelope. The
    response is a flat JSON object `{"video_id": "...", "status":
-   "queued", ...}` — no envelope wrapping (unlike HeyGen).
+"queued", ...}` — no envelope wrapping (unlike HeyGen).
 2. `GET /v2/videos/{video_id}` — polled every 10 s (15-minute
    timeout) until `status == "ready"`. Other terminal statuses are
    `error` and `deleted`, both treated as failures.
@@ -186,10 +188,10 @@ The mock-server test validates the cache-hit path: a second
 
 ```sh
 # Pure unit tests + mock-server integration test — no network.
-nim c -r --threads:on --hints:off --path:src --path:../GuiAssert/src tests/ttavus.nim
+nim c -r --threads:on --hints:off --path:src --path:../DemoVideoStudio/src --path:../GuiAssert/src tests/ttavus.nim
 
 # Live end-to-end against tavusapi.com — requires TAVUS_API_KEY.
-nim c -d:tavusLive -r --threads:on --hints:off --path:src --path:../GuiAssert/src tests/ttavus.nim
+nim c -d:tavusLive -r --threads:on --hints:off --path:src --path:../DemoVideoStudio/src --path:../GuiAssert/src tests/ttavus.nim
 ```
 
 The `--threads:on` flag is required because the mock-server test
